@@ -26,6 +26,15 @@
 
 ;; Get an overview of all your git repos with Org mode.
 
+;; Set up : customize `git-overview-repositories'. If you don't, the
+;; default is to use the repositories that magit knows via
+;; `magit-repo-dirs'.
+
+;; Usage : M-x git-overview RET
+
+;; Currently this only shows the information with no easy way to act
+;; on the repositories.
+
 ;;; Code:
 
 (require 'magit)
