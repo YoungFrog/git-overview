@@ -32,9 +32,30 @@
 (require 'let-alist)
 (require 'cl-macs)
 
-(defcustom git-overview-repositories nil
-  "List of repositories which you'd like to keep track of."
+(defcustom git-overview-repositories 'magit
+  "Repositories which you'd like to keep track of.
+
+The default value is the symbol `magit', which means to keep
+track of magit repositories.
+
+To customize the list of repositories, you can set this variable
+to an alist as described in the documentation of the function
+`git-overview-repositories'."
   :group 'git-overview)
+
+(defun git-overview-repositories ()
+  "Repositories of which to keep track.
+This returns an alist mapping a category (a string) to a list of
+git directories, controlled by the option
+`git-overview-repositories'.
+
+Example: '((\"My repos\" \"/path/to/myrepo1\" \"myrepo2\")
+           (\"Watched repos\" \"/path/to/some/other/repo\")
+           (\"Other repos\" \"/path/to/git/repo\"))"
+  (if (eq git-overview-repositories 'magit)
+      (list (cons "Magit repositories"
+                  (mapcar 'cdr (magit-list-repos magit-repo-dirs))))
+    git-overview-repositories))
 
 (defun git-overview ()
   "Open an Org mode buffer with an overview of your git repositories.
@@ -44,8 +65,8 @@ The list of repositories is taken from `git-overview-repositories'."
   (with-current-buffer (get-buffer-create "*Git Overview*")
     (let ((inhibit-read-only t)) (erase-buffer))
     (insert "#+COLUMNS: %25ITEM %20Tracks %7Behind %7Ahead\n")
-    (org-mode)
-    (dolist (category git-overview-repositories)
+    (git-overview-mode)
+    (dolist (category (git-overview-repositories))
       (insert "* " (car category) "\n")
       (dolist (repo (cdr category))
         (git-overview-insert-repo repo 2)))
