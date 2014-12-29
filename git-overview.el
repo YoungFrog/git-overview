@@ -81,7 +81,7 @@ The list of repositories is taken from `git-overview-repositories'."
     (insert (make-string level ?*) " " (file-name-nondirectory (directory-file-name repo)) ": ")
     (insert .branch)
     (insert " [/]\n")
-    (org-entry-put (point) "Gitdir" (org-make-link-string .gitdir))
+    (org-entry-put (point) "Gitdir" .gitdir)
     (dolist (branch .branches)
       (let-alist branch
         (insert (make-string level ?*) "* " .branch "\n")
@@ -92,6 +92,17 @@ The list of repositories is taken from `git-overview-repositories'."
           (when (or .behind .ahead)
             (org-todo 1)))))))
 
+(defun git-overview-magit-status (&optional arg)
+  (interactive "P")
+  (let ((dir (org-entry-get (point) "Gitdir" t)))
+    (if (and dir (not arg))
+        (magit-status dir)
+      (call-interactively #'magit-status))))
+
+(define-derived-mode git-overview-mode org-mode "Git overview"
+  t)
+
+(define-key git-overview-mode-map [remap magit-status] #'git-overview-magit-status)
 
 (defmacro git-overview-with-repo (repo &rest body)
   "Give access, within BODY, to the information for repo REPO.
