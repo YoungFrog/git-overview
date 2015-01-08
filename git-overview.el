@@ -66,19 +66,22 @@ Example: '((\"My repos\" \"/path/to/myrepo1\" \"myrepo2\")
                   (mapcar 'cdr (magit-list-repos magit-repo-dirs))))
     git-overview-repositories))
 
-(defun git-overview ()
+(defun git-overview (level)
   "Open an Org mode buffer with an overview of your git repositories.
 
-The list of repositories is taken from `git-overview-repositories'."
-  (interactive)
+The list of repositories is taken from `git-overview-repositories'.
+
+LEVEL is the number of stars for the categories returned by
+`git-overview-repositories'."
+  (interactive "p")
   (with-current-buffer (get-buffer-create "*Git Overview*")
     (let ((inhibit-read-only t)) (erase-buffer))
     (insert "#+COLUMNS: %25ITEM %20Tracks %7Behind %7Ahead\n")
     (git-overview-mode)
     (dolist (category (git-overview-repositories))
-      (insert "* " (car category) "\n")
+      (insert (make-string level ?*) " " (car category) "\n")
       (dolist (repo (cdr category))
-        (git-overview-insert-repo repo 2)))
+        (git-overview-insert-repo repo (org-get-valid-level level 1))))
     (org-update-statistics-cookies t)
     (goto-char (point-min))
     (set-buffer-modified-p nil)
@@ -86,24 +89,96 @@ The list of repositories is taken from `git-overview-repositories'."
 
 (defun git-overview-insert-repo (repo level)
   "Insert a level LEVEL Org heading for repository REPO."
-  (git-overview-with-repo repo
-    (insert (make-string level ?*) " " (file-name-nondirectory (directory-file-name repo)) ": ")
-    (insert .branch)
-    (insert " [/]\n")
-    (org-entry-put (point) "Gitdir" .gitdir)
-    (dolist (branch .branches)
-      (let-alist branch
-        (insert (make-string level ?*) "* " .branch "\n")
-        (when .tracking
-          (org-entry-put (point) "Tracks" .tracking)
-          (when .behind (org-entry-put (point) "Behind" .behind))
-          (when .ahead (org-entry-put (point) "Ahead" .ahead))
-          (when (or .behind .ahead)
-            (org-todo 1)))))))
+  (insert (make-string level ?*)
+          " "
+          (file-name-nondirectory (directory-file-name repo))
+          " [/]\n")
+  (org-entry-put (point) "Gitdir" repo)
+  (git-overview-update-repo)
+  (save-restriction
+    (git-overview-narrow-to-repo)
+    (goto-char (point-max))))
+
+(defun git-overview-insert-branch (branch-info level)
+  (insert (make-string level ?*) " ")
+  (insert (cdr (assoc 'branch branch-info)))
+  (insert "\n")
+  (save-excursion
+    (git-overview-update-branch branch-info)
+    (org-end-of-subtree t)))
+
+
+(defun git-overview-branch-at-point ()
+  (org-entry-get (point) "Branch"))
+(defun git-overview-repo-at-point ()
+  (org-entry-get (point) "Gitdir" t))
+
+(defun git-overview-narrow-to-repo ()
+  "Narrow to the repo at point, and return its location."
+  (let ((repo (git-overview-repo-at-point)))
+    (when repo
+      (if (marker-buffer org-entry-property-inherited-from)
+          (goto-char org-entry-property-inherited-from))
+      (org-narrow-to-subtree)
+      (cl-assert (equal repo (git-overview-repo-at-point)))
+      repo)))
+
+(defun git-overview-update-repo ()
+  (interactive)
+  (save-excursion
+    (save-restriction
+      (git-overview-with-repo (git-overview-narrow-to-repo)
+        (goto-char (point-min))
+        (while (outline-next-heading) ;; we're going to visit every single subheading.
+          ;; Check if this is a subtree with branch information
+          (-when-let (branch-at-point (git-overview-branch-at-point))
+            ;; check if it exists or not.
+            (--if-let (cl-member
+                       branch-at-point
+                       .branches
+                       :test
+                       (lambda (x y)
+                         (let-alist y
+                           (equal .branch x))))
+                (progn
+                  (git-overview-update-branch (car it))
+                  (callf2 delq (car it) .branches))
+              nil
+              ;; this is the "this looks like a branch but it
+              ;; doesn't exist" case. remove it seems a bit too much...
+              )))
+        (goto-char (point-max))
+        (dolist (branch .branches)
+          (org-back-over-empty-lines)
+          (git-overview-insert-branch branch
+                                      (org-get-valid-level
+                                       (save-excursion (goto-char (point-min))
+                                                       (org-outline-level))
+                                       1)))))))
+
+(defun git-overview-update-branch (branch-info)
+  "Update branch at point using data from BRANCH-INFO.
+The argument should be an alist."
+  (let-alist branch-info
+    (dolist (i `(("Tracks" , .tracking)
+                 ("Behind" , .behind)
+                 ("Ahead"  , .ahead)
+                 ("Branch"  , .branch)))
+      (git-overview--update-entry-at-point (car i) (cadr i)))
+    (if (or .behind .ahead)
+        (org-todo 1)
+      (org-todo 'none))))
+
+(defun git-overview--update-entry-at-point (key value)
+  "Remove or update property KEY to VALUE.
+When VALUE is nil, the property is instead removed."
+  (if value
+      (org-entry-put (point) key value)
+    (org-entry-delete (point) key)))
 
 (defun git-overview-magit-status (&optional arg)
   (interactive "P")
-  (let ((dir (org-entry-get (point) "Gitdir" t)))
+  (let ((dir (git-overview-repo-at-point)))
     (if (and dir (not arg))
         (magit-status dir)
       (call-interactively #'magit-status))))
