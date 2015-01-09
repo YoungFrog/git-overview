@@ -63,8 +63,16 @@ Example: '((\"My repos\" \"/path/to/myrepo1\" \"myrepo2\")
            (\"Other repos\" \"/path/to/git/repo\"))"
   (if (eq git-overview-repositories 'magit)
       (list (cons "Magit repositories"
-                  (mapcar 'cdr (magit-list-repos magit-repo-dirs))))
+                  (git-overview-magit-list-repos)))
     git-overview-repositories))
+
+(defun git-overview-magit-list-repos ()
+  "List of directories considered by magit."
+  (if (help-function-arglist 'magit-list-repos)
+      ;; older magit had mandatory argument
+      (mapcar 'cdr (magit-list-repos (list magit-repo-dirs)))
+    ;; newer magit has zero argument
+    (magit-list-repos)))
 
 (defun git-overview (level)
   "Open an Org mode buffer with an overview of your git repositories.
@@ -208,7 +216,10 @@ tracking, ahead and behind are used."
         (warn "No git repo found in %s" repo)
       (let ((default-directory (or topdir default-directory)))
         `((branch . ,(magit-get-current-branch))
-          (tracking . ,(magit-get-remote/branch))
+          (tracking . ,(if (fboundp 'magit-get-remote-branch)
+                           (let ((it (magit-get-remote-branch)))
+                             (format "%s/%s" (car it) (cdr it)))
+                         (magit-get-remote/branch)))
           (branches . ,(git-overview--branch-info))
           (gitdir . ,topdir))))))
 
