@@ -225,37 +225,39 @@ tracking, ahead and behind are used."
 
 (defconst git-overview--branch-line-re
   ;; mostly stolen from `magit-wash-branch-line-re'
-  (concat "^\\([ *] \\)"                ; 1: current branch marker
-          "\\(.+?\\) +"                 ; 2: branch name
-          "\\(?:"
-          "\\([0-9a-fA-F]+\\)"          ; 3: sha1
-          " "
+  (concat "^"
+          "\\(?1:[ \\*]\\) "
+          "\\(?2:([^)]+)\\|[^ ]+?\\)"   ; branch
+          "\\(?: +\\)"
+          "\\(?3:[0-9a-fA-F]+\\) "      ; sha1
           "\\(?:\\["
-          "\\([^:\n]+\\)"              ; 4: tracking
-          "\\(?:: \\)?"
-          "\\(?:[^]]+ \\([0-9]+\\)\\)?"  ; 5: ahead
-          "\\(?:,[^]]+ \\([0-9]+\\)\\)?" ; 6: behind
+          "\\(?5:[^:]+\\): "            ; upstream
+          "\\(?:"
+          "\\(?8:gone\\)\\|"               ; gone
+          "\\(?:ahead \\(?6:[0-9]+\\)\\)?" ; ahead
+          "\\(?:, \\)?"
+          "\\(?:behind \\(?7:[0-9]+\\)\\)?" ; behind
+          "\\)"
           "\\] \\)?"
-          "\\(?:.*\\)"                  ; message
-          "\\|"                         ; or
-          "-> "                         ; the pointer to
-          "\\(.+\\)"                    ; 7: a ref
-          "\\)\n")
+          "\\(?4:.*\\)")
   "This is for `git-overview--branch-info' to use")
 
 (defun git-overview--branch-info ()
   "For parsing the output of git branch -vv"
   (let ((result))
     (with-temp-buffer
-      (cl-assert (= 0 (call-process "git" nil (current-buffer) nil "branch" "-vv")))
+      (let ((process-environment (cons '("LANG" . "C")
+                                 process-environment)))
+        (cl-assert (= 0 (call-process "git" nil (current-buffer) nil "branch" "-vv"))))
       (goto-char (point-min))
       (while (looking-at git-overview--branch-line-re)
         (let* ((marker      (match-string 1))
                (branch      (match-string 2))
                (sha1        (match-string 3))
-               (tracking    (match-string 4))
-               (ahead       (match-string 5))
-               (behind      (match-string 6)))
+               (tracking    (match-string 5))
+               (ahead       (match-string 6))
+               (behind      (match-string 7))
+               (gone        (match-string 8)))
           (push `((branch . ,branch)
                   (active . ,(equal marker "* "))
                   (hash . ,sha1)
